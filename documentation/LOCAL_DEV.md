@@ -13,13 +13,13 @@ Create a file named `user-data.yaml` with the follwing content.
 #cloud-config
 
 users:
-- name: nmasse
-  gecos: Nicolas MASSE
+- name: _YOUR_LOGIN_
+  gecos: _YOUR_NAME_
   groups: wheel
   lock_passwd: false
   passwd: $6$...123 # generate the hash with the "mkpasswd" command
   ssh_authorized_keys:
-  - ssh-ed25519 123...456
+  - ssh-ed25519 123...456 # Add your key
 
 write_files:
 - path: /etc/sudoers
