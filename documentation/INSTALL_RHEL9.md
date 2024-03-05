@@ -361,3 +361,32 @@ rm -f kiosk.iso && mkksiso -r "inst.ks inst.stage2" --ks kiosk.ks "${BUILDID}-in
 ls -lh kiosk.iso
 file kiosk.iso
 ```
+
+## Install the image on the Edge device
+
+
+## Ostree update
+
+Create the ostree update and add it to the ostree repository with ref = `rhel/9/x86_64/edge-kiosk`.
+
+Edit the kiosk blueprint and add  2048-cli package
+
+Install the update.
+
+```sh
+composer-cli blueprints depsolve kioskv2
+BUILDID=$(composer-cli compose start-ostree kiosk edge-commit --url http://$MYIP/repo --ref "rhel/9/$(uname -m)/edge-kiosk" --parent "rhel/9/$(uname -m)/edge" | awk '{print $2}')
+echo "Build $BUILDID is running..."
+wait_for_compose "$BUILDID"
+composer-cli compose image "${BUILDID}"
+mkdir -p "/tmp/${BUILDID}-commit"
+tar -xf "${BUILDID}-commit.tar" -C "/tmp/${BUILDID}-commit"
+sudo ostree --repo=/var/www/repo pull-local "/tmp/${BUILDID}-commit/repo"
+ostree --repo=/var/www/repo refs
+ostree --repo=/var/www/repo log rhel/9/x86_64/edge-kiosk
+```
+
+Login to the edge device and update.
+
+
+Once updated remove the previous version
