@@ -62,9 +62,9 @@ sudo dnf install -y podman buildah
 Define the target image properties.
 
 ```sh
-REGISTRY="quay.io"
-IMAGE_NAME="edge_workshop/zurich"
-IMAGE_TAG=USE_PERSONNAL_TAG
+export REGISTRY="quay.io"
+export IMAGE_NAME="edge_workshop/zurich"
+export IMAGE_TAG=USE_PERSONNAL_TAG
 ```
 
 Build and push the image to the registry.
