@@ -45,6 +45,7 @@ baseos
 ## Clone this repository
 
 ```sh
+sudo dnf install git -y
 git clone -b workshop https://github.com/bdherouville/red-hat-kiosk.git
 cd red-hat-kiosk
 export GIT_REPO_CLONE="$PWD"
