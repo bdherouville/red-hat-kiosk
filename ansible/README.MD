@@ -14,158 +14,41 @@ Microshift pre-requisites :
 - RHEL 9.2 or 9.3
 - LVM volume group (VG) with unused space
 
-## Install Pre-requisites
+## Pre-requisites on the target machine
 
 ```sh
 sudo subscription-manager register --username $RHN_LOGIN --auto-attach
 sudo subscription-manager attach --pool=$RHN_POOL_ID
-sudo dnf install -y osbuild-composer composer-cli cockpit-composer git firewalld python3-toml
-sudo systemctl enable --now osbuild-composer.socket
-sudo systemctl enable --now firewalld
-sudo systemctl enable --now cockpit.socket
-sudo systemctl restart osbuild-composer
-sudo usermod -a -G weldr "$(id -un)"
 ```
 
-Check that **os-composer** is working.
-
-```
-$ source /etc/bash_completion.d/composer-cli
-$ composer-cli status show
-API server status:
-    Database version:   0
-    Database supported: true
-    Schema version:     0
-    API version:        1
-    Backend:            osbuild-composer
-    Build:              NEVRA:osbuild-composer-88.3-1.el9_3.x86_64
-
-$ composer-cli sources list
-appstream
-baseos
-```
-
-## Create the container image
-
-Install podman and buildah.
-
-```sh
-sudo dnf install -y podman buildah
-```
-
-Define the target image properties.
-
-```sh
-REGISTRY="quay.io"
-IMAGE_NAME="nmasse_itix/kiosk-app"
-IMAGE_TAG="latest"
-```
-
-Build and push the image to the registry.
-
-```sh
-cd "$GIT_REPO_CLONE/application"
-podman build -t localhost/kiosk-app:latest .
-podman login "$REGISTRY"
-podman tag localhost/kiosk-app:latest "$REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
-podman push "$REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
-```
-
-## Nginx configuration
-
-Install and configure nginx.
-
-```sh
-sudo dnf install -y nginx
-sudo systemctl enable --now nginx.service
-sudo firewall-cmd --permanent --add-port={80/tcp,443/tcp}
-sudo firewall-cmd --reload
-sudo mkdir -p /var/www
-sudo restorecon -Rv /var/www
-sudo sed -i.${EPOCHREALTIME:-bak} 's|/usr/share/nginx/html|/var/www|g' /etc/nginx/nginx.conf
-sudo systemctl restart nginx.service
-```
-
-Find the IP address of the current server.
-
-```sh
-MYIP="$(ip -4 -br addr show scope global | awk 'NR == 1 { split($3, parts, "/"); print parts[1]; }')"
-```
 ## Ansible Config
 
 Create a `inventory.yaml` file inside the ansible folder or define the inventory path inside the `ansible.cfg` file  
 
-Create a `config.yaml` file inside the ansible folder following this model:
+Update `config.yaml` in `ansible/group_vars/all/` to match your environment.
+
+Create an ansible vault named `vault.yaml` in `ansible/group_vars/all/` with the following content.
+
 ```yaml
-blueprint: #name of the blueprint you want to use from the ansible/bluprint folder. EXAMPLE blueprint: blueprint_example.toml
-repo_location: #EXAMPLE repo_location: /opt/custom-rpms/
-ADMIN_SSH_PUBLIC_KEY: # ssh-rsa AA...
-ADMIN_PASSWORD: 
-MICROSHIFT_PULL_SECRET: # Generate one on https://console.redhat.com/openshift/install/pull-secret
+blueprint_admin_password_hash: # Generate one with "mkpasswd -m bcrypt"
+kickstart_microshift_pull_secret: # Generate one on https://console.redhat.com/openshift/install/pull-secret
 ```
 
-## Run all the Ansible files
-To run all of the ansible files, use the following command:
-```
-ansible-playbook playbooks/full_play.yaml
-```
+Install the required collections.
 
-
-## Create the initial ostree repo
-
-
-Add blueprint file into the blueprint folder or use the `blueprint_example.toml`  
-The blueprint use in this opperation is define in `config.yaml` as `blueprint:`
-
-Create the initial ostree repo using `blueprint_example.toml` use the following command: 
-```
-ansible-playbook playbooks/initial_ostree.yaml
+```sh
+ansible-galaxy collection install -r requirements.yaml
 ```
 
+## Prepare the target machine
 
-## Build the RPMS
-
-To build RPM for kiosk-config, microshift-manifests and Google Chrome, run the `build_RPMS.yaml` playbook
-```
-ansible-playbook playbooks/build_RPMS.yaml
-```
-
-## Repository Creation
-To build a repository containing the RPMS we created, run the `repo_creation.yaml` playbook
-The directory where the repo is created is define in `config.yaml` as `repo_location:` 
-
-To start the build, run :
-```
-ansible-playbook playbooks/repo_creation.yaml 
+```sh
+ansible-playbook prerequisites.yaml
+ansible-playbook bootstrap-ostree.yaml
 ```
 
+## Regular builds
 
-## Blueprint preparation
-
-To work properly, this playbook needs the property `ADMIN_SSH_PUBLIC_KEY` and `ADMIN_PASSWORD` to be define in `config.yaml`  
-
-To start the build, run :
+```sh
+ansible-playbook build.yaml
 ```
-ansible-playbook playbooks/blueprint_preparation.yaml 
-```
-
-## Ostree construction
-
-Create the ostree image and add it to the ostree repository with `ref = rhel/9/x86_64/edge-kiosk` by using the following playbook :
-```
-ansible-playbook playbooks/ostree_construction.yaml
-```
-
-## Generate the Installer ISO image
-
-Generate the ISO image of the installer by using the following playbook :
-```
-ansible-playbook playbooks/gen_iso_image.yaml
-```
-
-## Prepare & inject the Kickstart script
-Prepare & inject the Kisckstart script and create the final kiosk.iso, use the followin playbook :
-```
-ansible-playbook playbooks/kickstart.yaml
-```
-

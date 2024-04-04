@@ -1,0 +1,4 @@
+repo_location: /opt/custom-rpms
+blueprint_admin_ssh_public_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFW62WJXI1ZCMfNA4w0dMpL0fsldhbEfULNGIUB0nQui nmasse@localhost.localdomain
+www_location: /var/www
+compose_timeout: 300

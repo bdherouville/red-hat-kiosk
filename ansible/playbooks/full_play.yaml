@@ -1,7 +1,0 @@
----
-- import_playbook: initial_ostree.yaml
-- import_playbook: build_RPMS.yaml
-- import_playbook: repo_creation.yaml
-- import_playbook: ostree_construction.yaml
-- import_playbook: gen_iso_image.yaml
-- import_playbook: kickstart.yaml

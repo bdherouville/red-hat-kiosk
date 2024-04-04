@@ -1,0 +1,46 @@
+name = "kiosk"
+description = "Example Kiosk"
+version = "0.0.8"
+modules = []
+groups = []
+
+[[packages]]
+name = "kiosk-config"
+version = "*"
+
+[[packages]]
+name = "cockpit"
+
+[[packages]]
+name = "microshift-manifests"
+version = "*"
+
+[[packages]]
+name = "cockpit-system"
+
+[customizations]
+hostname = "kiosk.local"
+
+[customizations.services]
+enabled = ["cockpit.socket", "sshd", "microshift"]
+
+[customizations.timezone]
+timezone = "Europe/Paris"
+ntpservers = ["0.fr.pool.ntp.org", "1.fr.pool.ntp.org"]
+
+[customizations.locale]
+languages = ["fr_FR.UTF-8"]
+keyboard = "fr"
+
+#22 ssh / 9090 cockpit / 6443 microshift
+[customizations.firewall]
+ports = ["22:tcp", "30000:tcp", "9090:tcp", "6443:tcp"]
+
+[[customizations.user]]
+name = "admin"
+description = "admin"
+password = '{{ blueprint_admin_password_hash }}'
+key = "{{ blueprint_admin_ssh_public_key }}"
+home = "/home/admin/"
+shell = "/usr/bin/bash"
+groups = ["users", "wheel"]

@@ -1,0 +1,148 @@
+- name: Install prerequisites
+  hosts: all
+  become: true
+  tasks:
+  - community.general.rhsm_repository:
+      name:
+      - rhocp-4.14-for-rhel-9-{{ ansible_facts['userspace_architecture'] }}-rpms
+      - fast-datapath-for-rhel-9-{{ ansible_facts['userspace_architecture'] }}-rpms
+      state: enabled
+
+  - name: Install EPEL release package
+    become: true
+    ansible.builtin.dnf:
+      name: https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+      state: present
+      disable_gpg_check: true
+
+  - name: Install packages
+    ansible.builtin.dnf:
+      name:
+      - python3-toml
+      - createrepo
+      - git
+      - rpm-build
+      - rpmdevtools
+      - rpmrebuild
+      - mkpasswd
+      - podman
+      - buildah
+      - nginx
+      - lorax
+      - pykickstart
+      - osbuild-composer
+      - composer-cli
+      - cockpit-composer
+      - git
+      - firewalld
+      state: installed
+
+  - name: Start services
+    ansible.builtin.systemd:
+      name: "{{ item }}"
+      enabled: yes
+      state: started
+    loop:
+    - osbuild-composer.socket
+    - firewalld.service
+    - cockpit.socket
+    - nginx.service
+
+  - name: Adding ansible_user to the weldr group
+    ansible.builtin.user:
+      name: '{{ ansible_user | default(ansible_env.SUDO_USER) }}'
+      groups: weldr
+      append: yes
+
+  - name: Allow HTTP and HTTPS
+    ansible.posix.firewalld:
+      service: '{{ item }}'
+      permanent: true
+      immediate: true
+      state: enabled
+    loop:
+    - http
+    - https
+
+  - name: Ensure the ostree directory exists
+    become: true
+    ansible.builtin.file:
+      path: "{{ www_location }}"
+      state: directory
+      mode: '0755'
+      serole: object_r
+      setype: httpd_sys_content_t
+      seuser: system_u
+
+  - name: Configure nginx
+    lineinfile:
+      path: /etc/nginx/nginx.conf
+      line: "root {{ www_location }};"
+      regexp: "^\\s*root\\s+.*;"
+
+  - name: Restart nginx
+    ansible.builtin.systemd:
+      name: nginx.service
+      state: restarted
+
+  - name: Ensure the repository directory exists
+    become: true
+    ansible.builtin.file:
+      path: "{{ repo_location }}"
+      state: directory
+      mode: '0755'
+
+  - name: Update the repository with createrepo
+    become: true
+    ansible.builtin.command:
+      cmd: "createrepo {{ repo_location }}"
+
+  - name: Add custom repository
+    ansible.builtin.yum_repository:
+      name: custom
+      file: custom
+      description: Custom RPMS
+      baseurl: file://{{ repo_location }}
+      enabled: true
+      gpgcheck: false
+
+  - name: Add sources
+    infra.osbuild.repository: '{{ item }}'
+    loop:
+    - repo_name: custom packages for RHEL
+      type: yum-baseurl
+      base_url: file://{{ repo_location }}
+      check_gpg: false
+      check_ssl: false
+      rhsm: false
+      state: present
+    - repo_name: Red Hat OpenShift Container Platform 4.14 for RHEL 9
+      type: yum-baseurl
+      base_url: https://cdn.redhat.com/content/dist/layered/rhel9/{{ ansible_facts['userspace_architecture'] }}/rhocp/4.14/os
+      check_gpg: true
+      check_ssl: true
+      rhsm: true
+      state: present
+    - repo_name: Fast Datapath for RHEL 9
+      type: yum-baseurl
+      base_url: https://cdn.redhat.com/content/dist/layered/rhel9/{{ ansible_facts['userspace_architecture'] }}/fast-datapath/os
+      check_gpg: true
+      check_ssl: true
+      rhsm: true
+      state: present
+    - repo_name: Extra Packages for Enterprise Linux
+      type: yum-baseurl
+      base_url: http://mirror.in2p3.fr/pub/epel/9/Everything/{{ ansible_facts['userspace_architecture'] }}/
+      check_gpg: false
+      check_ssl: false
+      rhsm: false
+      state: present
+    loop_control:
+      label: '{{ item.repo_name }}'
+
+  - name: Install packages on the ansible controller
+    dnf:
+      name:
+      - python3-toml
+      state: installed
+    delegate_to: localhost

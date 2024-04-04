@@ -1,0 +1,77 @@
+- name: Create the initial ostree repo
+  hosts: all
+  become: false
+  tasks:
+    - name: Read blueprint
+      register: results
+      args:
+        executable: /usr/bin/python3
+        stdin: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/files/minimal.toml') }}"
+      shell: |
+        import toml
+        import json
+        import sys
+        str=sys.stdin.read()
+        obj=toml.loads(str)
+        print(json.dumps(obj))
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - set_fact:
+        blueprint_name: '{{ blueprint_object.name }}'
+      vars:
+        blueprint_object: '{{ results.stdout | from_json }}'
+
+    - name: Push blueprint
+      infra.osbuild.push_blueprint:
+        blueprint: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/files/minimal.toml') }}"
+
+    - name: Start ostree compose
+      infra.osbuild.start_compose:
+        blueprint: "{{ blueprint_name }}"
+        allow_duplicate: true
+        compose_type: edge-commit
+        timeout: "{{ compose_timeout }}"
+      register: builder_compose_start_out
+
+    - ansible.builtin.set_fact:
+        compose_id: "{{ builder_compose_start_out['result']['body']['build_id']  }}"
+
+    - name: Wait for compose to finish
+      infra.osbuild.wait_compose:
+        compose_id: "{{ compose_id }}"
+        timeout: 3600
+
+    - ansible.builtin.tempfile:
+        state: directory
+        suffix: build
+      register: tmp
+
+    - name: Export the compose artifact
+      infra.osbuild.export_compose: # noqa only-builtins
+        compose_id: "{{ compose_id }}"
+        dest: "{{ tmp.path }}/{{ compose_id }}.tar"
+
+    - name: Clear directory /var/www/repo
+      ansible.builtin.file:
+        path: "{{ www_location }}/repo"
+        state: absent
+
+    - name: Extract compose artifact into /var/www/repo
+      ansible.builtin.unarchive:
+        src: "{{ tmp.path }}/{{ compose_id }}.tar"
+        dest: "{{ www_location }}"
+        remote_src: true
+      become: true
+
+    - name: Create an empty tree
+      ansible.builtin.file:
+        path: "{{ tmp.path }}/empty-tree"
+        mode: '0755'
+        state: directory
+      become: true
+
+    - name: Create an empty commit
+      ansible.builtin.shell: "ostree --repo={{ www_location }}/repo commit -b 'empty' --tree=dir={{ tmp.path }}/empty-tree"
+      become: true
