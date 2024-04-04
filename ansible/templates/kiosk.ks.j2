@@ -27,7 +27,7 @@ text
 zerombr
 clearpart --all --initlabel
 reqpart --add-boot
-part pv.01 --size=1024 --grow --ondisk=/dev/disk/by-path/pci-0000:00:12.0-ata-1
+part pv.01 --size=1024 --grow --ondisk={{ kickstart_root_disk }}
 volgroup rhel pv.01
 logvol /  --fstype="xfs" --size=10240 --name=root --vgname=rhel
 
