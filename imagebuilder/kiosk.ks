@@ -21,32 +21,15 @@ reboot
 text
 
 ##
-## Storage configuration
-##
-
-# Clear the target disk
-zerombr
-
-# Remove existing partitions
-clearpart --all --initlabel
-
-# Automatically create partitions required by hardware platform
-# and add a separate /boot partition
-reqpart --add-boot
-
-
-##
-## Alternative partitioning on only one disk
+## Storage configuration for only one disk
 ## /dev/disk/by-path/pci-0000:00:12.0-ata-1 instead of sda when sda is taken by the usb stick
 ##
 zerombr
 clearpart --all --initlabel
 reqpart --add-boot
 part pv.01 --size=10240 --ondisk=/dev/disk/by-path/pci-0000:00:12.0-ata-1
-volgroup system pv.01
+volgroup rhel pv.01
 logvol /  --fstype="xfs" --size=1 --grow --name=root --vgname=system
-part pv.02 --size=1 --grow --ondisk=/dev/disk/by-path/pci-0000:00:12.0-ata-1
-volgroup data pv.02
 
 ##
 ## Network configuration

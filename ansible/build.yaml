@@ -9,6 +9,11 @@
         update: yes
         clone: yes
 
+    - ansible.builtin.tempfile:
+        state: directory
+        suffix: -build
+      register: tmp
+
     ##
     ## RPM construction
     ##
@@ -127,7 +132,7 @@
         blueprint: "{{ lookup('ansible.builtin.template', 'kiosk.toml.j2') }}"
 
     - name: Start ostree compose
-      infra.osbuild.start_compose:
+      start_compose2:
         blueprint: "{{ blueprint_name }}"
         allow_duplicate: true
         compose_type: edge-commit
@@ -144,11 +149,6 @@
       infra.osbuild.wait_compose:
         compose_id: "{{ compose_id }}"
         timeout: 3600
-
-    - ansible.builtin.tempfile:
-        state: directory
-        suffix: build
-      register: tmp
 
     - name: Export the compose artifact
       infra.osbuild.export_compose: # noqa only-builtins
@@ -204,7 +204,7 @@
         blueprint: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/files/edge-installer.toml') }}"
 
     - name: Start ostree compose
-      infra.osbuild.start_compose:
+      start_compose2:
         blueprint: "{{ blueprint_name }}"
         allow_duplicate: true
         compose_type: edge-installer
@@ -220,11 +220,6 @@
       infra.osbuild.wait_compose:
         compose_id: "{{ compose_id }}"
         timeout: 3600
-
-    - ansible.builtin.tempfile:
-        state: directory
-        suffix: build
-      register: tmp
 
     - name: Export the compose artifact
       infra.osbuild.export_compose: # noqa only-builtins
@@ -250,3 +245,9 @@
         dest: "{{ www_location }}/kiosk.iso"
         remote_src: true
       become: true
+
+  post_tasks:
+  - ansible.builtin.file:
+      path: "{{ tmp.path }}.iso"
+      state: absent
+    when: tmp is defined
