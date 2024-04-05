@@ -1,0 +1,4 @@
+collections:
+- infra.osbuild
+- community.general
+- ansible.posix

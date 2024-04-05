@@ -72,8 +72,13 @@ install -m 0755 -D kiosk-app %{buildroot}/usr/bin/kiosk-app
 %attr(0755, root, root) /usr/bin/kiosk-app
 
 %pre
-getent group kiosk >/dev/null 2>&1 || groupadd -r kiosk
-getent passwd kiosk >/dev/null 2>&1 || useradd -r -N -g kiosk -d /home/kiosk -m kiosk
+##
+## HEADS UP !!!
+##
+## The kiosk user needs to be created in the kickstart now.
+##
+#getent group kiosk >/dev/null 2>&1 || groupadd -r kiosk
+#getent passwd kiosk >/dev/null 2>&1 || useradd -r -N -g kiosk -d /home/kiosk -m kiosk
 
 %post
 %systemd_user_post com.redhat.Kiosk.SampleApp.service

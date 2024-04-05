@@ -59,8 +59,8 @@ AutomaticUpdatePolicy=apply
 [[customizations.user]]
 name = "admin"
 description = "admin"
-password = '__ADMIN_PASSWORD__'
-key = "__ADMIN_SSH_PUBLIC_KEY__"
+password = '{{ blueprint_admin_password_hash }}'
+key = "{{ blueprint_admin_ssh_public_key }}"
 home = "/home/admin/"
 shell = "/usr/bin/bash"
 groups = ["users", "wheel"]
@@ -68,6 +68,7 @@ groups = ["users", "wheel"]
 [[customizations.user]]
 name = "kiosk"
 description = "kiosk"
-password = '__KIOSK_PASSWORD__'
+password = '{{ blueprint_kiosk_password_hash }}'
 home = "/home/kiosk/"
 shell = "/bin/bash"
+

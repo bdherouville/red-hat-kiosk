@@ -17,8 +17,9 @@ Microshift pre-requisites :
 ```sh
 sudo subscription-manager register --username $RHN_LOGIN --auto-attach
 sudo subscription-manager attach --pool=$RHN_POOL_ID
-sudo dnf install -y osbuild-composer composer-cli cockpit-composer
+sudo dnf install -y osbuild-composer composer-cli cockpit-composer git firewalld python3-toml
 sudo systemctl enable --now osbuild-composer.socket
+sudo systemctl enable --now firewalld
 sudo systemctl enable --now cockpit.socket
 sudo systemctl restart osbuild-composer
 sudo usermod -a -G weldr "$(id -un)"
@@ -45,7 +46,7 @@ baseos
 ## Clone this repository
 
 ```sh
-git clone https://github.com/nmasse-itix/red-hat-kiosk.git
+git clone https://github.com/ePietry/red-hat-kiosk.git
 cd red-hat-kiosk
 export GIT_REPO_CLONE="$PWD"
 ```
@@ -181,6 +182,7 @@ rpmbuild -ba $HOME/rpmbuild/SPECS/microshift-manifests.spec
 Rebuild the Google Chrome RPM
 
 ```sh
+sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 mkdir $HOME/rpmbuild/VENDOR
 curl -s -Lo $HOME/rpmbuild/VENDOR/google-chrome-stable_current_x86_64.rpm https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm
 rpmrebuild -s $HOME/rpmbuild/SPECS/google-chrome-stable.spec -p $HOME/rpmbuild/VENDOR/google-chrome-stable_current_x86_64.rpm

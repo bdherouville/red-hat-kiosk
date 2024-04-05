@@ -1,0 +1,270 @@
+- name: Build the Kiosk images
+  hosts: all
+  become: false
+  tasks:
+    - name: Checkout the git repo
+      ansible.builtin.git:
+        repo: 'https://github.com/nmasse-itix/red-hat-kiosk.git'
+        dest: "{{ ansible_user_dir }}/red-hat-kiosk"
+        update: yes
+        clone: yes
+
+    - ansible.builtin.tempfile:
+        state: directory
+        suffix: -build
+      register: tmp
+
+    ##
+    ## Cleanup
+    ##
+
+    - name: Get all images for removal
+      ansible.builtin.command: /usr/bin/composer-cli compose list
+      register: builder_output
+      changed_when: false
+
+    - name: Remove each image by UUID
+      ansible.builtin.command: "/usr/bin/composer-cli compose delete {{ (item | split)[0] }}"
+      loop: "{{ builder_output.stdout_lines }}"
+      loop_control:
+        label: "{{ (item | split)[0] }}"
+      changed_when: true
+      when: (item | split)[0] != "ID"
+
+    ##
+    ## RPM construction
+    ##
+
+    - debug:
+        msg: "Starting RPM build..."
+
+    - name: Ensure ~/rpmbuild is a symbolic link
+      ansible.builtin.file:
+        src: "{{ ansible_user_dir }}/red-hat-kiosk/rpms"
+        dest: "{{ ansible_user_dir }}/rpmbuild"
+        state: link
+
+    - name: Build the kiosk-config RPMS
+      ansible.builtin.shell: |
+        spectool -g -R {{ ansible_user_dir }}/rpmbuild/SPECS/kiosk-config.spec
+        rpmbuild -ba {{ ansible_user_dir }}/rpmbuild/SPECS/kiosk-config.spec
+
+    - name: Build the microshift-manifests RPM
+      ansible.builtin.shell: |
+        spectool -g -R {{ ansible_user_dir }}/rpmbuild/SPECS/microshift-manifests.spec
+        rpmbuild -ba {{ ansible_user_dir }}/rpmbuild/SPECS/microshift-manifests.spec
+
+    - name: Ensure the VENDOR directory exists
+      ansible.builtin.file:
+        path: "{{ ansible_user_dir }}/rpmbuild/VENDOR"
+        state: directory
+        mode: '0755'
+
+    - name: Download Google Chrome RPM
+      ansible.builtin.get_url:
+        url: https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm
+        dest: "{{ ansible_user_dir }}/rpmbuild/VENDOR/google-chrome-stable_current_x86_64.rpm"
+
+    - name: Rebuild the Google Chrome RPM
+      ansible.builtin.shell: |
+        set -Eeuo pipefail
+        rpmrebuild -s {{ ansible_user_dir }}/rpmbuild/SPECS/google-chrome-stable.spec -p {{ ansible_user_dir }}/rpmbuild/VENDOR/google-chrome-stable_current_x86_64.rpm
+        RPM=$(rpm -q {{ ansible_user_dir }}/rpmbuild/VENDOR/google-chrome-stable_current_x86_64.rpm)
+        mkdir -p {{ ansible_user_dir }}/rpmbuild/BUILDROOT/$RPM/
+        rpm2cpio {{ ansible_user_dir }}/rpmbuild/VENDOR/google-chrome-stable_current_x86_64.rpm | cpio -idmv -D {{ ansible_user_dir }}/rpmbuild/BUILDROOT/$RPM/
+        mv {{ ansible_user_dir }}/rpmbuild/BUILDROOT/$RPM/opt/google/ {{ ansible_user_dir }}/rpmbuild/BUILDROOT/$RPM/usr/bin/
+        cd {{ ansible_user_dir }}/rpmbuild/BUILDROOT/$RPM/usr/bin/
+        rm -f google-chrome-stable
+        ln -s google/chrome/google-chrome google-chrome-stable
+        ln -s google/chrome/google-chrome chrome
+        sed -i.${EPOCHREALTIME:-bak} 's|/opt/google|/usr/bin/google|g' {{ ansible_user_dir }}/rpmbuild/SPECS/google-chrome-stable.spec
+        rpmbuild -bb {{ ansible_user_dir }}/rpmbuild/SPECS/google-chrome-stable.spec
+      args:
+        executable: /bin/bash
+      register: rebuild_result
+      failed_when: rebuild_result.rc != 0
+
+    - name: Get built RPMS
+      ansible.builtin.find:
+        path: "{{ ansible_user_dir }}/rpmbuild/RPMS/x86_64/"
+        patterns: "*.rpm"
+      register: build_rpms
+
+    - name: Extract filenames from paths of built RPMs
+      ansible.builtin.set_fact:
+        rpm_filenames: "{{ build_rpms.files | map(attribute='path') | list }}"
+
+    - name: Copy RPMs to the repository location
+      ansible.builtin.copy:
+        src: '{{ item }}'
+        dest: "{{ repo_location }}"
+        owner: root
+        group: root
+        mode: '0644'
+        remote_src: yes
+      loop: '{{ rpm_filenames }}'
+      loop_control:
+        label: "{{ item | basename }}"
+      become: true
+
+    - name: Update the repository with createrepo
+      become: true
+      ansible.builtin.command:
+        cmd: "createrepo {{ repo_location }}"
+
+    - name: Clean dnf cache
+      become: true
+      ansible.builtin.command:
+        cmd: dnf clean all
+
+    ##
+    ## Ostree construction
+    ##
+
+    - debug:
+        msg: "Starting ostree build..."
+
+    - name: Parse blueprint
+      register: results
+      args:
+        executable: /usr/bin/python3
+        stdin: "{{ lookup('ansible.builtin.template', 'kiosk.toml.j2') }}"
+      shell: |
+        import toml
+        import json
+        import sys
+        str=sys.stdin.read()
+        obj=toml.loads(str)
+        print(json.dumps(obj))
+      become: false
+      changed_when: false
+
+    - set_fact:
+        blueprint_name: '{{ blueprint_object.name }}'
+      vars:
+        blueprint_object: '{{ results.stdout | from_json }}'
+
+    - name: Push Blueprint
+      infra.osbuild.push_blueprint:
+        blueprint: "{{ lookup('ansible.builtin.template', 'kiosk.toml.j2') }}"
+
+    - name: Start ostree compose
+      start_compose2:
+        blueprint: "{{ blueprint_name }}"
+        allow_duplicate: true
+        compose_type: edge-commit
+        ostree_ref: "rhel/9/{{ ansible_facts['userspace_architecture'] }}/edge-kiosk"
+        ostree_parent: "rhel/9/{{ ansible_facts['userspace_architecture'] }}/edge"
+        ostree_url: http://{{ ansible_default_ipv4.address }}/repo
+        timeout: "{{ compose_timeout }}"
+      register: builder_compose_start_out
+
+    - ansible.builtin.set_fact:
+        compose_id: "{{ builder_compose_start_out['result']['body']['build_id']  }}"
+
+    - name: Wait for compose to finish
+      infra.osbuild.wait_compose:
+        compose_id: "{{ compose_id }}"
+        timeout: 3600
+
+    - name: Export the compose artifact
+      infra.osbuild.export_compose: # noqa only-builtins
+        compose_id: "{{ compose_id }}"
+        dest: "{{ tmp.path }}/{{ compose_id }}.tar"
+
+    - name: Create commit directory
+      ansible.builtin.file:
+        path: "{{ tmp.path }}/{{ compose_id }}"
+        mode: '0755'
+        state: directory
+
+    - name: Extract compose artifact
+      ansible.builtin.unarchive:
+        src: "{{ tmp.path }}/{{ compose_id }}.tar"
+        dest: "{{ tmp.path }}/{{ compose_id }}"
+        remote_src: true
+
+    - name: Pull local ostree repository
+      ansible.builtin.shell: ostree --repo={{ www_location }}/repo pull-local "{{ tmp.path }}/{{ compose_id }}/repo"
+      become: true
+
+    ##
+    ## ISO Construction
+    ##
+
+    - debug:
+        msg: "Starting ISO build..."
+
+    - name: Read blueprint
+      register: results
+      args:
+        executable: /usr/bin/python3
+        stdin: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/files/edge-installer.toml') }}"
+      shell: |
+        import toml
+        import json
+        import sys
+        str=sys.stdin.read()
+        obj=toml.loads(str)
+        print(json.dumps(obj))
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - set_fact:
+        blueprint_name: '{{ blueprint_object.name }}'
+      vars:
+        blueprint_object: '{{ results.stdout | from_json }}'
+
+    - name: Push blueprint
+      infra.osbuild.push_blueprint:
+        blueprint: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/files/edge-installer.toml') }}"
+
+    - name: Start ostree compose
+      start_compose2:
+        blueprint: "{{ blueprint_name }}"
+        allow_duplicate: true
+        compose_type: edge-installer
+        ostree_ref: empty
+        ostree_url: http://{{ ansible_default_ipv4.address }}/repo
+        timeout: "{{ compose_timeout }}"
+      register: builder_compose_start_out
+
+    - ansible.builtin.set_fact:
+        compose_id: "{{ builder_compose_start_out['result']['body']['build_id']  }}"
+
+    - name: Wait for compose to finish
+      infra.osbuild.wait_compose:
+        compose_id: "{{ compose_id }}"
+        timeout: 3600
+
+    - name: Export the compose artifact
+      infra.osbuild.export_compose: # noqa only-builtins
+        compose_id: "{{ compose_id }}"
+        dest: "{{ tmp.path }}/{{ compose_id }}.iso"
+
+    - name: Create kiosk.ks from template
+      ansible.builtin.template:
+        src: "kiosk.ks.j2"
+        dest: "{{ tmp.path }}/kiosk.ks"
+
+    - name: Validate kiosk.ks using ksvalidator
+      ansible.builtin.command:
+        cmd: "ksvalidator {{ tmp.path }}/kiosk.ks"
+
+    - name: Create new kiosk.iso file
+      ansible.builtin.command:
+        cmd: "mkksiso -r 'inst.ks' --ks {{ tmp.path }}/kiosk.ks {{ tmp.path }}/{{ compose_id }}.iso {{ tmp.path }}/kiosk.iso"
+
+    - name: Copy new ISO to /var/www
+      copy:
+        src: "{{ tmp.path }}/kiosk.iso"
+        dest: "{{ www_location }}/kiosk.iso"
+        remote_src: true
+      become: true
+
+  post_tasks:
+  - ansible.builtin.file:
+      path: "{{ tmp.path }}.iso"
+      state: absent
+    when: tmp is defined
