@@ -22,7 +22,7 @@ name = "cockpit-system"
 hostname = "kiosk.local"
 
 [customizations.services]
-enabled = ["cockpit.socket", "sshd", "microshift"]
+enabled = ["cockpit.socket", "sshd", "microshift", "rpm-ostreed", "rpm-ostreed-automatic.timer"]
 
 [customizations.timezone]
 timezone = "Europe/Paris"
@@ -36,6 +36,26 @@ keyboard = "fr"
 [customizations.firewall]
 ports = ["22:tcp", "30000:tcp", "9090:tcp", "6443:tcp"]
 
+##
+## Automatic updates
+##
+## This file is used by the rpm-ostreed service that is triggered by the
+## rpm-ostreed-automatic systemd timer:
+##
+##   [Timer]
+##   OnBootSec=1h           # 1 hour after boot
+##   OnUnitInactiveSec=1d   # 1 day after last check
+##
+## But you can trigger a check manually with:
+##
+##  sudo rpm-ostree upgrade --trigger-automatic-update-policy
+##
+[[customizations.files]]
+path = "/etc/rpm-ostreed.conf"
+data = """[Daemon]
+AutomaticUpdatePolicy=apply
+"""
+
 [[customizations.user]]
 name = "admin"
 description = "admin"
@@ -44,3 +64,10 @@ key = "__ADMIN_SSH_PUBLIC_KEY__"
 home = "/home/admin/"
 shell = "/usr/bin/bash"
 groups = ["users", "wheel"]
+
+[[customizations.user]]
+name = "kiosk"
+description = "kiosk"
+password = '__KIOSK_PASSWORD__'
+home = "/home/kiosk/"
+shell = "/bin/bash"
