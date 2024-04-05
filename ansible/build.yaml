@@ -15,6 +15,23 @@
       register: tmp
 
     ##
+    ## Cleanup
+    ##
+
+    - name: Get all images for removal
+      ansible.builtin.command: /usr/bin/composer-cli compose list
+      register: builder_output
+      changed_when: false
+
+    - name: Remove each image by UUID
+      ansible.builtin.command: "/usr/bin/composer-cli compose delete {{ (item | split)[0] }}"
+      loop: "{{ builder_output.stdout_lines }}"
+      loop_control:
+        label: "{{ (item | split)[0] }}"
+      changed_when: true
+      when: (item | split)[0] != "ID"
+
+    ##
     ## RPM construction
     ##
 

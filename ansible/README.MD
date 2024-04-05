@@ -31,6 +31,7 @@ Create an ansible vault named `vault.yaml` in `ansible/group_vars/all/` with the
 
 ```yaml
 blueprint_admin_password_hash: # Generate one with "mkpasswd -m bcrypt"
+blueprint_kiosk_password_hash: # Generate one with "mkpasswd -m bcrypt"
 kickstart_microshift_pull_secret: # Generate one on https://console.redhat.com/openshift/install/pull-secret
 ```
 
