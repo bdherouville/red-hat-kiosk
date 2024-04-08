@@ -46,7 +46,7 @@ baseos
 ## Clone this repository
 
 ```sh
-git clone https://github.com/ePietry/red-hat-kiosk.git
+git clone https://github.com/bdherouville/red-hat-kiosk.git
 cd red-hat-kiosk
 export GIT_REPO_CLONE="$PWD"
 ```
@@ -63,7 +63,7 @@ Define the target image properties.
 
 ```sh
 REGISTRY="quay.io"
-IMAGE_NAME="nmasse_itix/kiosk-app"
+IMAGE_NAME="$YOUR_QUAY_REPOSITORY/kiosk-app"
 IMAGE_TAG="latest"
 ```
 
