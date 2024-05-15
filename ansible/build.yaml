@@ -54,6 +54,11 @@
         spectool -g -R {{ ansible_user_dir }}/rpmbuild/SPECS/microshift-manifests.spec
         rpmbuild -ba {{ ansible_user_dir }}/rpmbuild/SPECS/microshift-manifests.spec
 
+    - name: Build the ca-certificates-custom RPM
+      ansible.builtin.shell: |
+        spectool -g -R {{ ansible_user_dir }}/rpmbuild/SPECS/ca-certificates-custom.spec
+        rpmbuild -ba {{ ansible_user_dir }}/rpmbuild/SPECS/ca-certificates-custom.spec
+
     - name: Ensure the VENDOR directory exists
       ansible.builtin.file:
         path: "{{ ansible_user_dir }}/rpmbuild/VENDOR"
@@ -86,7 +91,8 @@
 
     - name: Get built RPMS
       ansible.builtin.find:
-        path: "{{ ansible_user_dir }}/rpmbuild/RPMS/x86_64/"
+        path: "{{ ansible_user_dir }}/rpmbuild/RPMS/"
+        recurse: true
         patterns: "*.rpm"
       register: build_rpms
 
@@ -251,25 +257,11 @@
         compose_id: "{{ compose_id }}"
         dest: "{{ tmp.path }}/{{ compose_id }}.iso"
 
-    - name: Create kiosk.ks from template
-      ansible.builtin.template:
-        src: "kiosk.ks.j2"
-        dest: "{{ tmp.path }}/kiosk.ks"
-
-    - name: Validate kiosk.ks using ksvalidator
-      ansible.builtin.command:
-        cmd: "ksvalidator {{ tmp.path }}/kiosk.ks"
-
-    - name: Create new kiosk.iso file
-      ansible.builtin.command:
-        cmd: "mkksiso -r 'inst.ks' --ks {{ tmp.path }}/kiosk.ks {{ tmp.path }}/{{ compose_id }}.iso {{ tmp.path }}/kiosk.iso"
-
-    - name: Copy new ISO to /var/www
-      copy:
-        src: "{{ tmp.path }}/kiosk.iso"
-        dest: "{{ www_location }}/kiosk.iso"
-        remote_src: true
-      become: true
+    - ansible.builtin.include_tasks: build-iso.yaml
+      loop: '{{ kickstart_devices }}'
+      loop_control:
+        label: "{{ device.hostname }}"
+        loop_var: device
 
   post_tasks:
   - ansible.builtin.file:

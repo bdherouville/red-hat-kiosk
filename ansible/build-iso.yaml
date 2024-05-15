@@ -1,0 +1,30 @@
+- debug:
+    msg: "Injecting Kickstart of {{ device.hostname }} into ISO..."
+
+- name: Create kiosk.ks from template
+  ansible.builtin.template:
+    src: "kiosk.ks.j2"
+    dest: "{{ tmp.path }}/kiosk-{{ device.hostname }}.ks"
+
+- name: Validate kiosk.ks using ksvalidator
+  ansible.builtin.command:
+    cmd: "ksvalidator {{ tmp.path }}/kiosk-{{ device.hostname }}.ks"
+
+- name: Create new kiosk.iso file
+  ansible.builtin.command:
+    cmd: "mkksiso -r 'inst.ks' --ks {{ tmp.path }}/kiosk-{{ device.hostname }}.ks {{ tmp.path }}/{{ compose_id }}.iso {{ tmp.path }}/kiosk.iso"
+
+- name: Copy new ISO to /var/www
+  copy:
+    src: "{{ tmp.path }}/kiosk.iso"
+    dest: "{{ www_location }}/kiosk-{{ device.hostname }}.iso"
+    remote_src: true
+  become: true
+
+- name: Cleanup
+  ansible.builtin.file:
+    path: '{{ item }}'
+    state: absent
+  loop:
+  - "{{ tmp.path }}/kiosk.iso"
+  - "{{ tmp.path }}/kiosk-{{ device.hostname }}.ks"

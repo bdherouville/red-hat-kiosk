@@ -27,7 +27,7 @@ text
 zerombr
 clearpart --all --initlabel
 reqpart --add-boot
-part pv.01 --size=1024 --grow --ondisk={{ kickstart_root_disk }}
+part pv.01 --size=1024 --grow --ondisk={{ device.storage.root_disk }}
 volgroup rhel pv.01
 logvol /  --fstype="xfs" --size=10240 --name=root --vgname=rhel
 
@@ -36,10 +36,10 @@ logvol /  --fstype="xfs" --size=10240 --name=root --vgname=rhel
 ##
 
 # Configure the first network device
-network  --bootproto=dhcp --device=enp1s0 --noipv6 --activate
+network  --bootproto=static --ip={{ device.network.ip_address }} --netmask={{ device.network.netmask }} --gateway={{ device.network.gateway }} --nameserver={{ device.network.dns }} --device={{ device.network.interface }} --noipv6 --activate
 
 # Configure hostname
-network  --hostname=kiosk.localdomain
+network  --hostname={{ device.hostname }}
 
 ##
 ## Ostree installation
