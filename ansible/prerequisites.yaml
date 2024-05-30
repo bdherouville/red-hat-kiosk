@@ -146,3 +146,27 @@
       - python3-toml
       state: installed
     delegate_to: localhost
+
+  - name: Create /etc/osbuild-worker
+    file:
+      path: /etc/osbuild-worker
+      state: directory
+
+  - name: Create /etc/osbuild-worker/osbuild-worker.toml
+    copy:
+      content: |
+        [containers]
+        auth_file_path = "/etc/osbuild-worker/pull-secret.json"
+      dest: /etc/osbuild-worker/osbuild-worker.toml
+
+  - name: Create /etc/osbuild-worker/pull-secret.json
+    copy:
+      content: |
+        {{ kickstart_microshift_pull_secret }}
+      dest: /etc/osbuild-worker/pull-secret.json
+      mode: 0600
+
+  - name: restart the worker
+    systemd:
+      name: osbuild-worker@1
+      state: restarted

@@ -4,6 +4,7 @@ Release:    rh1
 Summary:    Custom CA Certificates
 License:    BSD
 Source0:    custom-ca.crt
+Source1:    haproxy-tls.crt
 Requires(post): ca-certificates
 Requires(postun): ca-certificates
 BuildArch:  noarch
@@ -20,14 +21,17 @@ Custom CA certificates
 ##
 # openssl req -new -nodes -keyout custom-ca.key -out custom-ca.crt -x509 -subj '/CN=Custom CA'
 cp %{S:0} custom-ca.crt
+cp %{S:1} haproxy-tls.crt
 
 %build
 
 %install
 install -m 0644 -D custom-ca.crt %{buildroot}/etc/pki/ca-trust/source/anchors/custom-ca.crt
+install -m 0644 -D haproxy-tls.crt %{buildroot}/etc/pki/ca-trust/source/anchors/haproxy-tls.crt
 
 %files
 %config %attr(0644, root, root) /etc/pki/ca-trust/source/anchors/custom-ca.crt
+%config %attr(0644, root, root) /etc/pki/ca-trust/source/anchors/haproxy-tls.crt
 
 %post
 ##

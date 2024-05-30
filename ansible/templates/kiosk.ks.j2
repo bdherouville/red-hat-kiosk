@@ -36,7 +36,11 @@ logvol /  --fstype="xfs" --size=10240 --name=root --vgname=rhel
 ##
 
 # Configure the first network device
+{% if device.network.bootproto == "static" %}
 network  --bootproto=static --ip={{ device.network.ip_address }} --netmask={{ device.network.netmask }} --gateway={{ device.network.gateway }} --nameserver={{ device.network.dns }} --device={{ device.network.interface }} --noipv6 --activate
+{% else %}
+network  --bootproto=dhcp --device={{ device.network.interface }} --noipv6 --activate
+{% endif %}
 
 # Configure hostname
 network  --hostname={{ device.hostname }}
