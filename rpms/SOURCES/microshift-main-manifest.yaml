@@ -35,27 +35,103 @@ data:
         timeout check           10s
         maxconn                 3000
 
-    frontend webserver
-      bind 0.0.0.0:8080
+    frontend api
+      bind 0.0.0.0:8443 ssl crt /usr/local/etc/haproxy-tls/haproxy-tls.pem
+      default_backend api_main
 
-      # The following configuration monitors availability of the main backend
-      # and if there is no more available servers in the main backend (online),
-      # it redirects to the backup backend (local).
-      acl main_service_failed nbsrv(appserver_main) le 0
-      use_backend appserver_backup if main_service_failed
-      default_backend appserver_main
-
-    backend appserver_main
+    backend api_main
       http-request set-header Host redhat-kiosk-app.netlify.app
       balance roundrobin
       # IP Addresses of the Netlify's APEX Load Balancer (apex-loadbalancer.netlify.com)
       server svc-main1 75.2.60.5:443 check ssl sni str(redhat-kiosk-app.netlify.app)
       server svc-main2 99.83.231.61:443 check ssl sni str(redhat-kiosk-app.netlify.app)
 
-    backend appserver_backup 
+    frontend web
+      bind 0.0.0.0:1443 ssl crt /usr/local/etc/haproxy-tls/haproxy-tls.pem
+
+      # The following configuration monitors availability of the main backend
+      # and if there is no more available servers in the main backend (online),
+      # it redirects to the backup backend (local).
+      acl main_service_failed nbsrv(web_main) le 0
+      use_backend web_backup if main_service_failed
+      default_backend web_main
+
+    backend web_main
+      http-request set-header Host redhat-kiosk-app.netlify.app
+      balance roundrobin
+      # IP Addresses of the Netlify's APEX Load Balancer (apex-loadbalancer.netlify.com)
+      server svc-main1 75.2.60.5:443 check ssl sni str(redhat-kiosk-app.netlify.app)
+      server svc-main2 99.83.231.61:443 check ssl sni str(redhat-kiosk-app.netlify.app)
+
+    backend web_backup
       http-request set-header Host kiosk-app.kiosk-app.svc.cluster.local
       balance roundrobin
       server svc-backup1 kiosk-app:8080 check
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: haproxy
+  namespace: kiosk-app
+stringData:
+  ##
+  ## The TLS certificate of haproxy has been generated with :
+  ##
+  #
+  # openssl req -nodes -keyout haproxy-tls.key -out haproxy-tls.crt -x509 -subj '/CN=kiosk' -days 3500 -addext 'subjectAltName = DNS:kiosk'
+  # cat haproxy-tls.key haproxy-tls.crt > haproxy-tls.pem
+  #
+  ##
+  ## You also need to inject it into the system truststore (see ca-certificates-custom RPM)
+  ##
+  haproxy-tls.pem: |
+    -----BEGIN PRIVATE KEY-----
+    MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDVX+Grag83v8Oy
+    U+4lJmvB8EOhBJZJwLt4rrtKOZwlYH3hzT1difulkrcf0kuLQpTAnIMRbvsZJhLz
+    BJlVZcMocblBQo6po2ida1n/FPrH8rVcm13h/QDVVPF8r8kA+vjEeMf60BxZXqjb
+    G4H58f/iNkfdEmrQJPw/vXBGg8+Xc3nb8cfVGRAERwXQjctQA9Wra4g4aB4+SaVf
+    dWzxBfkuua06A3Yh/qUcnKb6tvsidkZ83zwzvrPV1TCFYbXFdYHtG66u9XApht9C
+    P+LP6MFf/y2KHzXJiTOYgSt5nPRtdQRVApUIp2bNZoQ4jX3elaSHYAQkGzqnUTIn
+    Gc4d69UdAgMBAAECggEAMIGgCTpOpFNNVzRaToq583g9v5SN381XMPuz6w9Grn6N
+    j2/7c9DC6uR8CdliQBHORC0wZJ2wqoprw2A3xWChaYfU3/+T8/+IcETvzBvGWP8V
+    eKx/Prkn39d0IG7LyJPFStDUUXHPCAgLZegOd7YqgA/r7Vda/d9yksDrjbQ4VIrL
+    C8+O0G9OwQtHVGkWrkX5H7fVtUh5Zsj+sd3JrBrJF7z2M9Z68igeCzj0uyh1PwdW
+    Hqr30HjF1BODLJsKNSgk+QU2mmI+mpLftbs/JNE7uW2shIF8C8wVm448EmLqDa5d
+    ZRnzI84HIEGZQtnM7vU7UuD2A4Uo3hCjjigezjTbxwKBgQDv6tqpRA9Z9t/6Vgf4
+    pyYMrNtHwrc5rRXRs4p6TlrUIXh6xnSm0VceQQQt/Ux1kz0LBs2ytr/es9aaF1RZ
+    iALyRE9YfVt9FPvlEsDxpeMA7wBriLmaEf72JZp/ewqaBLqicTYF+urAQHtLe1HF
+    5fAh3I/brzJc3cwiHc+ci+Ji9wKBgQDjrYinTMbQkXPs9V1uzak1BS373QjdxoXb
+    yMbc6wSc5wEoQ+6kjY7opg22bPBPSZIz9fWodie21VF/5Hb4SJN0p08E9+UkbJaw
+    8QLHwI5Cx5/q46CfRw7pQAIGX+VmOrR4W2u2LMIBF1CgXs/dc4/UTS2rX7G+1Ake
+    uzC6quFviwKBgQCbtjra1xB7nE48JLAhwyJf4aSkS40twtfBdZyvysEKovqV/M3j
+    I0U+noX+70I7oSdiS7Ufg5q+CMyE0BVv0mXPJWS2Ew5Y/VCLmYNekwLlLTmBkYic
+    pYdr7HX8vTfhRKZ5Ha8pbHQF+RPMpqopHhafc45uz6OJQG7nyZ9ghC2XewKBgQCC
+    jeOqa3Al8QIUgq5M90lryciQgDKxWUEwwnSmAW3nut8DA9E4MqQb6/w4+0bhcEKR
+    4Rw4uWgUg0X0nEFMJfHIFphNNQkEVfAjDlCV0mjBCk89FcHpE4oNXlLK7PpSIJ+T
+    1HhzQj8M+R2WmEeBqN500ry5ZGo8DsIcCSLsJ0iV+QKBgQDLro+O6PtLIVS3HuLz
+    vjl8mdq6bp/E1x4caW28/ndrE0kyPXdQaTUmCN9vua4AvpHd+sGRqlf7yAdOv0xJ
+    hHzmZYLlfkGcLMgyYuxWQCW+NdU9mopbNYCNQM4/g58E3KqH0w7OiBR0ZbCEQSc8
+    O2HIRGcFIGSoeFP13/GpNTL19Q==
+    -----END PRIVATE KEY-----
+    -----BEGIN CERTIFICATE-----
+    MIIDEzCCAfugAwIBAgIUIQ84bKRNUKGP+FcOZLrRrGFaR8MwDQYJKoZIhvcNAQEL
+    BQAwEDEOMAwGA1UEAwwFa2lvc2swHhcNMjQwNTMwMTkxMDQyWhcNMzMxMjI5MTkx
+    MDQyWjAQMQ4wDAYDVQQDDAVraW9zazCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC
+    AQoCggEBANVf4atqDze/w7JT7iUma8HwQ6EElknAu3iuu0o5nCVgfeHNPV2J+6WS
+    tx/SS4tClMCcgxFu+xkmEvMEmVVlwyhxuUFCjqmjaJ1rWf8U+sfytVybXeH9ANVU
+    8XyvyQD6+MR4x/rQHFleqNsbgfnx/+I2R90SatAk/D+9cEaDz5dzedvxx9UZEARH
+    BdCNy1AD1atriDhoHj5JpV91bPEF+S65rToDdiH+pRycpvq2+yJ2RnzfPDO+s9XV
+    MIVhtcV1ge0brq71cCmG30I/4s/owV//LYofNcmJM5iBK3mc9G11BFUClQinZs1m
+    hDiNfd6VpIdgBCQbOqdRMicZzh3r1R0CAwEAAaNlMGMwHQYDVR0OBBYEFLVmzWG0
+    Hq6wBDfU9VXtw2h/C8woMB8GA1UdIwQYMBaAFLVmzWG0Hq6wBDfU9VXtw2h/C8wo
+    MA8GA1UdEwEB/wQFMAMBAf8wEAYDVR0RBAkwB4IFa2lvc2swDQYJKoZIhvcNAQEL
+    BQADggEBAMIbqF4rhkuo6T3wMIMsOsCqTQtfjiRyGvtsthLX9nZIfV5+Pc5g8z25
+    VyND4/g+xDgKLeNw/ZMWIPYDuV+LuKP1rYzCMV9JdZO4212Ir3AKmt7LHcRG1WWD
+    lxJ4TzoLK1S5tHJXpCnh8ahQHOj+Cf7Bb1lVF+gIBl/wsv/pF5GxE5o/UZlopvjA
+    BrGzSn+R0O8pozvvOVrFUQp7Qk4WmT304HYidvdUztXTlaBWc7ES2RlrMq9DXTeU
+    X3OmIbMxQMfkPv/x/wPizoF5K6wY/pQSZDO4UlIH6ms2MNqWn9hv/oJ/SjRtOhSZ
+    dQRf/WWSd7HGvcgxLirsSYOpxvcO6UQ=
+    -----END CERTIFICATE-----
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -74,17 +150,24 @@ spec:
     spec:
       containers:
       - name: haproxy
-        image: haproxy:latest
+        image: docker.io/library/haproxy:latest
+        imagePullPolicy: IfNotPresent
         volumeMounts:
         - name: config-volume
           mountPath: /usr/local/etc/haproxy/haproxy.cfg
           subPath: haproxy.cfg
+        - name: tls-volume
+          mountPath: /usr/local/etc/haproxy-tls/
         ports:
-        - containerPort: 8080
+        - containerPort: 1443
+        - containerPort: 8443
       volumes:
       - name: config-volume
         configMap:
           name: haproxy
+      - name: tls-volume
+        secret:
+          secretName: haproxy
 ---
 apiVersion: v1
 kind: Service
@@ -98,9 +181,14 @@ spec:
   ipFamilyPolicy: SingleStack
   clusterIP: 10.43.191.230
   ports:
-  - port: 80
+  - name: web
+    port: 443
     protocol: TCP
-    targetPort: 8080
+    targetPort: 1443
+  - name: api
+    port: 8443
+    protocol: TCP
+    targetPort: 8443
   selector:
     app: haproxy
 ---
@@ -122,6 +210,7 @@ spec:
       containers:
       - name: kiosk-app
         image: quay.io/nmasse_itix/kiosk-app:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
 ---

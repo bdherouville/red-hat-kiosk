@@ -1,8 +1,15 @@
 kickstart_devices:
-- hostname: kiosk.localdomain
+- hostname: kiosk.vm
+  storage:
+    root_disk: /dev/vda
+  network:
+    bootproto: dhcp
+    interface: enp1s0
+- hostname: kiosk.baremetal
   storage:
     root_disk: /dev/disk/by-path/pci-0000:00:12.0-ata-1
   network:
+    bootproto: static
     interface: enp1s0
     ip_address: 192.168.122.23
     netmask: 255.255.255.0
